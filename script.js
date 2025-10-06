@@ -92,28 +92,32 @@ document.addEventListener('DOMContentLoaded', () => {
     tabList.addEventListener('click', (e) => {
         const target = e.target;
         const tabLi = target.closest('li');
+        if (!tabLi) return;
 
-        if (target.classList.contains('delete-tab-btn')) {
-            if (confirm(`'${tabLi.textContent.slice(0,-1)}' 과목을 정말로 삭제하시겠습니까?`)) {
+        if (target.closest('.delete-tab-btn')) {
+            const tabName = tabLi.querySelector('span[data-editable]').textContent;
+            if (confirm(`'${tabName}' 과목을 정말로 삭제하시겠습니까?`)) {
                 remove(ref(db, `tabs/${tabLi.dataset.id}`));
             }
             return;
         }
 
-        if (tabLi) {
-            const newTabId = tabLi.dataset.id;
-            if (currentTabId !== newTabId) {
-                currentTabId = newTabId;
-                renderAll();
-            }
+        const newTabId = tabLi.dataset.id;
+        if (currentTabId !== newTabId) {
+            currentTabId = newTabId;
+            renderAll();
         }
     });
 
     tabList.addEventListener('blur', (e) => {
-        if (isAdmin && e.target.closest('li').querySelector('span[data-editable]')) {
+        if (isAdmin && e.target.matches('span[data-editable]')) {
             const tabId = e.target.closest('li').dataset.id;
             const newName = e.target.textContent;
-            update(ref(db, `tabs/${tabId}`), { name: newName });
+            if (newName) {
+                update(ref(db, `tabs/${tabId}`), { name: newName });
+            } else {
+                renderAll();
+            }
         }
     }, true);
 
