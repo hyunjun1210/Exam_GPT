@@ -228,13 +228,26 @@ button {
 .question-card ul.options { list-style: none; padding: 0; }
 .question-card ul.options li {
     padding: 12px 15px; border-radius: var(--border-radius-small); cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s; border: 1px solid var(--border-color);
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    border: 2px solid var(--border-color);
     margin-bottom: 8px;
     color: var(--subtle-text-color);
 }
-body.admin-mode .question-card ul.options li:hover { background-color: rgba(var(--primary-color), 0.1); border-color: var(--primary-color); }
 .question-card ul.options li input[type="radio"] { margin-right: 10px; accent-color: var(--primary-color); }
-.question-card ul.options li.correct-answer-admin { border: 2px solid var(--success-color); font-weight: bold; background-color: rgba(var(--success-color), 0.1); color: var(--text-color); }
+
+/* === 관리자용 정답 표시 스타일 (핵심 수정) === */
+body.admin-mode .question-card ul.options li[data-correct="true"] {
+    border: 2px solid var(--success-color);
+    font-weight: bold;
+    background-color: rgba(var(--success-color), 0.15);
+    color: var(--text-color);
+    box-shadow: 0 0 10px rgba(var(--success-color), 0.3);
+}
+
+body.admin-mode .question-card ul.options li:hover {
+    background-color: rgba(var(--primary-color), 0.1);
+    border-color: var(--primary-color);
+}
 .correct-answer-guide { font-size: 0.85em; color: var(--info-color); margin-top: 15px; background-color: rgba(var(--info-color), 0.1); padding: 10px; border-radius: var(--border-radius-small); border: 1px solid rgba(var(--info-color), 0.3); }
 
 .saq .user-answer-area {
