@@ -1,5 +1,5 @@
 import { db } from './firebase-config.js';
-import { ref, set, push, remove, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { ref, set, push, remove, onValue, update, runTransaction, onDisconnect } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -8,6 +8,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTabId = null;
     let allData = {};
 
+    // --- 실시간 편집 잠금 관련 ---
+    const sessionId = Math.random().toString(36).substring(2);
+    const locksRef = ref(db, 'editingLocks');
+    let currentLocks = {};
+
     // --- Firebase 서비스 가져오기 ---
     const auth = getAuth();
 
@@ -15,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const body = document.body;
     const authBtn = document.getElementById('auth-btn');
     const contentStream = document.getElementById('content-stream');
-    // ... 이하 기존 DOM 요소들 ...
     const loginModal = document.getElementById('login-modal');
     const loginModalClose = document.getElementById('login-modal-close');
     const loginForm = document.getElementById('login-form');
@@ -29,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Firebase 참조 ---
     const tabsRef = ref(db, 'tabs');
 
-    // === 인증 상태 리스너 ===
+    // --- 인증 상태 리스너 ---
     onAuthStateChanged(auth, (user) => {
         setAdminMode(!!user);
     });
@@ -40,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
         body.classList.toggle('admin-mode', mode);
         authBtn.textContent = mode ? '로그아웃' : '로그인';
         
-        // 드래그앤드롭 기능 활성화/비활성화
         if (sortableInstance) {
             sortableInstance.option("disabled", !mode);
         }
@@ -70,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch((error) => loginErrorMsg.textContent = '이메일 또는 비밀번호가 잘못되었습니다.');
     });
 
-    // ... 탭 관련 기능은 이전과 동일 ...
+    // --- 탭 관련 기능 ---
     addTabBtn.addEventListener('click', () => {
         const tabName = prompt('추가할 과목의 이름을 입력하세요:');
         if (tabName) {
@@ -128,12 +131,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('add-concept-choice').addEventListener('click', () => addContentToDB('concept'));
     document.getElementById('add-mcq-choice').addEventListener('click', () => addContentToDB('mcq'));
     document.getElementById('add-saq-choice').addEventListener('click', () => addContentToDB('saq'));
-    document.getElementById('add-image-choice').addEventListener('click', () => addContentToDB('image')); // 이미지 카드 추가
+    document.getElementById('add-image-choice').addEventListener('click', () => addContentToDB('image'));
 
     function addContentToDB(type) {
         const contentRef = ref(db, `tabs/${currentTabId}/content`);
         const currentContent = allData[currentTabId]?.content || {};
-        const newOrder = Object.keys(currentContent).length; // 새 카드의 순서
+        const newOrder = Object.keys(currentContent).length;
         
         let newContent;
         switch (type) {
@@ -149,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'saq':
                  newContent = { type: 'saq', question: '새로운 서술형 문제', answer: '모범 답안', order: newOrder };
                 break;
-            case 'image': // === 1. 이미지 카드 추가 로직 ===
+            case 'image':
                 const imageUrl = prompt('이미지 주소(URL)를 입력하세요:');
                 if (imageUrl) {
                     newContent = { type: 'image', title: '새로운 이미지 제목', imageUrl: imageUrl, order: newOrder };
@@ -183,8 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const li = document.createElement('li');
             li.dataset.id = tabId;
             li.innerHTML = `<span data-editable="tab-name">${tabData.name}</span> <button class="delete-tab-btn admin-only-inline">&times;</button>`;
-            li.querySelector('span[data-editable]').setAttribute('contenteditable', isAdmin);
-
             if (tabId === currentTabId) li.classList.add('active');
             tabList.appendChild(li);
         });
@@ -202,10 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const contentData = allData[currentTabId].content || {};
 
-        // === 2. 순서(order)에 따라 카드 정렬 ===
         const sortedContent = Object.entries(contentData)
             .map(([id, data]) => ({ id, ...data }))
-            .sort((a, b) => a.order - b.order);
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
 
         if (sortedContent.length === 0) {
             contentStream.innerHTML = `<p class="no-content-message">아직 추가된 콘텐츠가 없습니다.</p>`;
@@ -221,14 +221,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (card) {
                 contentStream.appendChild(card);
-                card.querySelectorAll('[data-editable]').forEach(el => el.setAttribute('contenteditable', isAdmin));
             }
         });
+        
+        applyLocksToUI();
     }
 
-
-    // --- 콘텐츠 이벤트 위임 (삭제, 수정 등) ---
-    // ... 이전과 동일 ...
+    // --- 콘텐츠 이벤트 위임 ---
     contentStream.addEventListener('click', (e) => {
         const card = e.target.closest('.card');
         if (!card) return;
@@ -280,8 +279,67 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, true);
 
+    contentStream.addEventListener('keydown', (e) => {
+        if (isAdmin && e.target.closest('[contenteditable="true"]') && e.key === 'Enter') {
+            e.preventDefault();
+            document.execCommand('insertLineBreak', false, null);
+        }
+    });
+
+    // --- 실시간 편집 잠금 로직 ---
+    onValue(locksRef, (snapshot) => {
+        currentLocks = snapshot.val() || {};
+        applyLocksToUI();
+    });
+    
+    function applyLocksToUI() {
+        document.querySelectorAll('[data-editable]').forEach(el => {
+            const card = el.closest('.card');
+            if(!card) return;
+            const cardId = card.dataset.id;
+            const lockId = cardId + '_' + el.dataset.editable;
+            const lockOwner = currentLocks[lockId];
+
+            if (lockOwner && lockOwner !== sessionId) {
+                el.setAttribute('contenteditable', 'false');
+                el.classList.add('is-locked');
+            } else {
+                el.classList.remove('is-locked');
+                el.setAttribute('contenteditable', isAdmin);
+            }
+        });
+    }
+
+    contentStream.addEventListener('focusin', (e) => {
+        if (isAdmin && e.target.hasAttribute('data-editable')) {
+            const el = e.target;
+            const cardId = el.closest('.card').dataset.id;
+            const field = el.dataset.editable;
+            const lockId = cardId + '_' + field;
+            const lockRef = ref(db, `editingLocks/${lockId}`);
+
+            runTransaction(lockRef, (currentData) => {
+                if (currentData === null) return sessionId;
+            }).then(({ committed }) => {
+                if (committed) onDisconnect(lockRef).remove();
+            });
+        }
+    });
+
+    contentStream.addEventListener('focusout', (e) => {
+        if (isAdmin && e.target.hasAttribute('data-editable')) {
+            const el = e.target;
+            const cardId = el.closest('.card').dataset.id;
+            const field = el.dataset.editable;
+            const lockId = cardId + '_' + field;
+            
+            if (currentLocks[lockId] === sessionId) {
+                remove(ref(db, `editingLocks/${lockId}`));
+            }
+        }
+    });
+
     // --- 카드 생성 함수들 ---
-    // ... 기존 함수들은 동일, 이미지 카드 생성 함수 추가 ...
     function createConceptCard(id, data) {
         const div = document.createElement('div');
         div.className = 'card concept-card';
@@ -292,7 +350,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
-    
     function createMcqCard(id, data) {
         const div = document.createElement('div');
         const uniqueName = `q${id}`;
@@ -329,7 +386,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
-    
     function createImageCard(id, data) {
         const div = document.createElement('div');
         div.className = 'card image-card';
@@ -342,23 +398,42 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
+    function checkSingleMcq(questionCard) {
+        const options = questionCard.querySelectorAll('.options li');
+        const selectedOption = questionCard.querySelector('input[type="radio"]:checked');
+        const resultP = questionCard.querySelector('.single-mcq-result');
+        if (!selectedOption) {
+            alert('답을 선택해주세요!');
+            return;
+        }
+        options.forEach(opt => opt.classList.remove('user-correct', 'user-incorrect', 'reveal-correct'));
+        resultP.classList.remove('correct', 'incorrect');
+        const selectedLi = selectedOption.closest('li');
+        const isCorrect = selectedLi.dataset.correct === 'true';
+        if (isCorrect) {
+            selectedLi.classList.add('user-correct');
+            resultP.textContent = '정답입니다! 🎉';
+            resultP.classList.add('correct');
+        } else {
+            selectedLi.classList.add('user-incorrect');
+            resultP.textContent = '오답입니다. 다시 확인해보세요.';
+            resultP.classList.add('incorrect');
+        }
+        questionCard.querySelector('li[data-correct="true"]').classList.add('reveal-correct');
+    }
 
-    function checkSingleMcq(questionCard) { /* ... 이전과 동일 ... */ }
-
-    // === 2. 드래그앤드롭 기능 초기화 ===
+    // --- 드래그앤드롭 기능 초기화 ---
     const sortableInstance = new Sortable(contentStream, {
         animation: 150,
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
-        disabled: !isAdmin, // 관리자 모드가 아닐 때는 비활성화
+        disabled: !isAdmin,
         onEnd: (evt) => {
             const updates = {};
             contentStream.querySelectorAll('.card').forEach((card, index) => {
                 const cardId = card.dataset.id;
-                // Firebase의 해당 경로에 order 값만 업데이트하도록 준비
                 updates[`/tabs/${currentTabId}/content/${cardId}/order`] = index;
             });
-            // 여러 경로를 한번에 업데이트 (효율적)
             update(ref(db), updates);
         },
     });
