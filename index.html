@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>지필고사 내용 정리 사이트</title>
+    <title>시험범위 정리</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,10 +18,23 @@
         </div>
     </div>
 
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="modal-close" id="login-modal-close">&times;</span>
+            <h2>관리자 로그인</h2>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="이메일" required>
+                <input type="password" id="login-password" placeholder="비밀번호" required>
+                <button type="submit">로그인</button>
+                <p id="login-error-msg"></p>
+            </form>
+        </div>
+    </div>
+
     <div class="container">
         <header>
-            <h1 contenteditable="false">📚 시험 내용 정리</h1>
-            <button id="admin-login-btn">관리자 모드</button>
+            <h1 contenteditable="false">📚 시험 범위 정리</h1>
+            <button id="auth-btn">로그인</button>
         </header>
 
         <nav class="tab-container">
@@ -29,6 +42,7 @@
                 </ul>
             <button id="add-tab-btn" class="admin-only">+ 새 과목 추가</button>
         </nav>
+
         <main>
             <div id="content-stream">
                 <p class="no-content-message">과목을 선택하거나 새 과목을 추가해주세요.</p>

@@ -1,16 +1,23 @@
-// script.js
 import { db } from './firebase-config.js';
 import { ref, set, push, remove, onValue, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- 전역 상태 변수 ---
     let isAdmin = false;
-    let currentTabId = null; // 현재 활성화된 탭의 ID
-    let allData = {}; // Firebase에서 받은 모든 데이터를 저장하는 객체
+    let currentTabId = null;
+    let allData = {};
+
+    // --- Firebase 서비스 가져오기 ---
+    const auth = getAuth();
 
     // --- DOM 요소 ---
     const body = document.body;
-    const adminLoginBtn = document.getElementById('admin-login-btn');
+    const authBtn = document.getElementById('auth-btn');
+    const loginModal = document.getElementById('login-modal');
+    const loginModalClose = document.getElementById('login-modal-close');
+    const loginForm = document.getElementById('login-form');
+    const loginErrorMsg = document.getElementById('login-error-msg');
     const contentStream = document.getElementById('content-stream');
     const tabList = document.getElementById('tab-list');
     const addTabBtn = document.getElementById('add-tab-btn');
@@ -21,37 +28,63 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Firebase 참조 ---
     const tabsRef = ref(db, 'tabs');
 
-    // --- 관리자 모드 ---
-    adminLoginBtn.addEventListener('click', () => {
-        if (isAdmin) {
-            if (confirm('관리자 모드를 종료하시겠습니까?')) setAdminMode(false);
+    // === 인증 상태 리스너 (핵심!) ===
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            setAdminMode(true);
         } else {
-            const password = prompt('관리자 비밀번호를 입력하세요:');
-            if (password === '5678*') {
-                alert('관리자 모드로 전환합니다.');
-                setAdminMode(true);
-            } else if (password !== null) {
-                alert('비밀번호가 틀렸습니다.');
-            }
+            setAdminMode(false);
         }
     });
-
+    
+    // --- 관리자 모드 UI 설정 ---
     function setAdminMode(mode) {
         isAdmin = mode;
         body.classList.toggle('admin-mode', mode);
-        adminLoginBtn.textContent = mode ? '관리자 로그아웃' : '관리자 모드';
-        renderAll(); // 관리자 모드 변경 시 UI 전체를 다시 렌더링
+        authBtn.textContent = mode ? '로그아웃' : '로그인';
+        renderAll();
     }
+    
+    // --- 로그인/로그아웃 버튼 로직 ---
+    authBtn.addEventListener('click', () => {
+        if (isAdmin) {
+            if(confirm('로그아웃 하시겠습니까?')) {
+                signOut(auth);
+            }
+        } else {
+            loginErrorMsg.textContent = '';
+            loginForm.reset();
+            loginModal.style.display = 'flex';
+        }
+    });
+
+    // --- 로그인 모달 로직 ---
+    loginModalClose.addEventListener('click', () => loginModal.style.display = 'none');
+    loginModal.addEventListener('click', (e) => (e.target === loginModal) && (loginModal.style.display = 'none'));
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+
+        signInWithEmailAndPassword(auth, email, password)
+            .then((userCredential) => {
+                loginModal.style.display = 'none';
+            })
+            .catch((error) => {
+                console.error("로그인 에러:", error.code);
+                loginErrorMsg.textContent = '이메일 또는 비밀번호가 잘못되었습니다.';
+            });
+    });
 
     // --- 탭 관련 기능 ---
     addTabBtn.addEventListener('click', () => {
         const tabName = prompt('추가할 과목의 이름을 입력하세요:');
         if (tabName) {
-            const newTabRef = push(tabsRef); // 새 탭을 위한 고유 키 생성
+            const newTabRef = push(tabsRef);
             set(newTabRef, { name: tabName, content: {} })
                 .then(() => {
-                    currentTabId = newTabRef.key; // 새 탭을 활성 탭으로 설정
-                    renderAll(); // 👈 화면을 새로고침하는 코드 추가!
+                    currentTabId = newTabRef.key;
+                    renderAll();
                 });
         }
     });
@@ -60,28 +93,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = e.target;
         const tabLi = target.closest('li');
 
-        // 탭 삭제 버튼 클릭 시
         if (target.classList.contains('delete-tab-btn')) {
-            if (confirm(`'${tabLi.textContent.slice(0,-1)}' 과목을 정말로 삭제하시겠습니까? 모든 내용이 사라집니다.`)) {
-                const tabIdToDelete = tabLi.dataset.id;
-                remove(ref(db, `tabs/${tabIdToDelete}`));
+            if (confirm(`'${tabLi.textContent.slice(0,-1)}' 과목을 정말로 삭제하시겠습니까?`)) {
+                remove(ref(db, `tabs/${tabLi.dataset.id}`));
             }
             return;
         }
 
-        // 탭 클릭 시
         if (tabLi) {
             const newTabId = tabLi.dataset.id;
             if (currentTabId !== newTabId) {
                 currentTabId = newTabId;
-                renderAll(); // 탭이 바뀌었으니 UI 전체를 다시 렌더링
+                renderAll();
             }
         }
     });
 
-    // 탭 이름 수정
     tabList.addEventListener('blur', (e) => {
-        if (isAdmin && e.target.hasAttribute('contenteditable')) {
+        if (isAdmin && e.target.closest('li').querySelector('span[data-editable]')) {
             const tabId = e.target.closest('li').dataset.id;
             const newName = e.target.textContent;
             update(ref(db, `tabs/${tabId}`), { name: newName });
@@ -111,15 +140,12 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'concept':
                 newContent = { type: 'concept', title: '새로운 개념 제목', description: '여기에 개념 설명을 작성하세요.' };
                 break;
-           case 'mcq':
+            case 'mcq':
                 newContent = {
-                    type: 'mcq',
-                    question: `문제 ${questionCount}.`,
+                    type: 'mcq', question: `문제 ${questionCount}.`,
                     options: [
-                        { text: '선택지 1', correct: false },
-                        { text: '선택지 2', correct: true },
-                        { text: '선택지 3', correct: false },
-                        { text: '선택지 4', correct: false },
+                        { text: '선택지 1', correct: false }, { text: '선택지 2', correct: true },
+                        { text: '선택지 3', correct: false }, { text: '선택지 4', correct: false },
                         { text: '선택지 5', correct: false }
                     ]
                 };
@@ -136,11 +162,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 데이터 로드 및 전체 렌더링 ---
     onValue(tabsRef, (snapshot) => {
         allData = snapshot.val() || {};
-        // 활성 탭이 삭제된 경우 처리
         if (currentTabId && !allData[currentTabId]) {
-            currentTabId = Object.keys(allData)[0] || null; // 첫 번째 탭을 활성 탭으로
+            currentTabId = Object.keys(allData)[0] || null;
         }
-        // 첫 로딩 시 활성 탭 설정
         if (!currentTabId) {
             currentTabId = Object.keys(allData)[0] || null;
         }
@@ -158,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const li = document.createElement('li');
             li.dataset.id = tabId;
             li.innerHTML = `<span data-editable="tab-name">${tabData.name}</span> <button class="delete-tab-btn admin-only-inline">&times;</button>`;
-            li.querySelector('[data-editable]').setAttribute('contenteditable', isAdmin);
+            li.querySelector('span[data-editable]').setAttribute('contenteditable', isAdmin);
 
             if (tabId === currentTabId) {
                 li.classList.add('active');
@@ -175,7 +199,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        if (isAdmin) addContentBtn.style.display = 'block';
+        if (isAdmin) {
+            addContentBtn.style.display = 'block';
+        } else {
+            addContentBtn.style.display = 'none';
+        }
 
         const contentData = allData[currentTabId].content || {};
         if (Object.keys(contentData).length === 0) {
@@ -204,19 +232,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const cardId = card.dataset.id;
         const cardRef = ref(db, `tabs/${currentTabId}/content/${cardId}`);
 
-        // 카드 삭제
         if (e.target.classList.contains('delete-btn')) {
             if (confirm('정말로 삭제하시겠습니까?')) remove(cardRef);
             return;
         }
 
-        // (관리자) 객관식 정답 설정
         if (isAdmin && e.target.closest('li')) {
             const targetLi = e.target.closest('li');
             const optionsUl = targetLi.parentElement;
             if (optionsUl.classList.contains('options')) {
                 const newOptions = Array.from(optionsUl.children).map((li, index) => ({
-                     text: li.querySelector('[data-editable]').textContent,
+                     text: li.querySelector('span[data-editable]').textContent,
                      correct: li === targetLi
                 }));
                  update(cardRef, { options: newOptions });
@@ -238,7 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const cardId = card.dataset.id;
             const field = e.target.dataset.editable;
             const value = e.target.textContent;
-            
             const cardRef = ref(db, `tabs/${currentTabId}/content/${cardId}`);
             const updates = {};
 
@@ -264,20 +289,17 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
-    
     function createMcqCard(id, data) {
         const div = document.createElement('div');
         const uniqueName = `q${id}`;
         div.className = 'card question-card mcq';
         div.dataset.id = id;
-        
         const optionsHtml = (data.options || []).map((opt, index) => `
             <li data-correct="${opt.correct}" class="${isAdmin && opt.correct ? 'correct-answer-admin' : ''}">
                 <label><input type="radio" name="${uniqueName}" value="${index}"> ${index + 1}) </label>
                 <span data-editable="option-${index}">${opt.text}</span>
             </li>
         `).join('');
-
         div.innerHTML = `
             <p class="question-text" data-editable="question">${data.question}</p>
             <ul class="options">${optionsHtml}</ul>
@@ -289,7 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
-
     function createSaqCard(id, data) {
         const div = document.createElement('div');
         div.className = 'card question-card saq';
@@ -304,7 +325,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
-
     function checkSingleMcq(questionCard) {
         const options = questionCard.querySelectorAll('.options li');
         const selectedOption = questionCard.querySelector('input[type="radio"]:checked');
