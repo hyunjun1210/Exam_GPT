@@ -36,7 +36,6 @@ body {
 
 .container { max-width: 900px; margin: 30px auto; padding: 20px; }
 
-/* --- 헤더 및 로그인 버튼 위치 조정 --- */
 header {
     display: flex;
     justify-content: space-between;
@@ -49,7 +48,6 @@ header h1 {
     color: var(--text-color);
     flex-grow: 1;
     text-align: center;
-    /* 버튼이 차지할 공간을 확보하기 위해 양쪽에 패딩을 줌 */
     padding: 0 120px;
 }
 header #auth-btn {
@@ -61,11 +59,9 @@ header #auth-btn {
     cursor: pointer;
     transition: background 0.3s, transform 0.2s;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    /* flexbox 아이템으로서 크기를 고정 */
     flex-shrink: 0;
 }
 header #auth-btn:hover { background: #9a9ea3; transform: translateY(-1px); }
-/* ---------------------------------- */
 
 .tab-container {
     display: flex;
@@ -136,7 +132,8 @@ body.admin-mode #tab-list li:hover .delete-tab-btn { display: inline-block; }
 .card {
     background: var(--card-background); border-radius: var(--border-radius-large); padding: 30px;
     margin-bottom: 25px; box-shadow: var(--shadow);
-    transition: transform 0.3s ease, box-shadow 0.3s ease; position: relative;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+    position: relative;
 }
 .card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5); }
 .concept-card h3 { margin-bottom: 12px; color: var(--text-color); font-size: 1.6em; }
@@ -146,9 +143,6 @@ body.admin-mode #tab-list li:hover .delete-tab-btn { display: inline-block; }
 .image-card h3 { margin-bottom: 15px; color: var(--text-color); font-size: 1.6em; }
 .image-card .image-container {
     width: 100%;
-    /* max-height와 overflow 제거: 이미지가 잘리지 않고 전체 보이도록 수정 */
-    /* max-height: 500px; */
-    /* overflow: hidden; */
     border-radius: var(--border-radius-medium);
     margin-bottom: 15px;
     border: 1px solid var(--border-color);
@@ -156,9 +150,9 @@ body.admin-mode #tab-list li:hover .delete-tab-btn { display: inline-block; }
 }
 .image-card img {
     width: 100%;
-    height: 100%; /* 이미지의 원본 비율을 유지하도록 */
+    height: auto;
     display: block;
-    object-fit: contain; /* 이미지가 컨테이너보다 클 때 축소 */
+    object-fit: contain;
 }
 
 .card.sortable-ghost {
@@ -179,13 +173,12 @@ body.admin-mode #tab-list li:hover .delete-tab-btn { display: inline-block; }
     color: var(--text-color);
 }
 
-.is-locked {
-    position: relative;
+/* === 카드 단위 잠금 스타일 === */
+.is-card-locked {
     cursor: not-allowed;
-    background-color: transparent !important;
-    outline: none !important;
+    position: relative;
 }
-.is-locked::after {
+.is-card-locked::after {
     content: '다른 사용자가 편집 중입니다... 🔒';
     position: absolute;
     top: 0;
@@ -197,11 +190,12 @@ body.admin-mode #tab-list li:hover .delete-tab-btn { display: inline-block; }
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 0.9em;
+    font-size: 1em;
     font-weight: bold;
-    border-radius: var(--border-radius-small);
-    z-index: 10;
+    border-radius: var(--border-radius-large);
+    z-index: 20;
 }
+/* ======================== */
 
 .admin-only { display: none; }
 body.admin-mode .admin-only { display: block; }
@@ -226,6 +220,7 @@ button {
     color: white; padding: 6px 12px; font-size: 0.9em;
     border-radius: var(--border-radius-small);
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 5;
 }
 .delete-btn:hover { background: #d32f2f; transform: translateY(-1px); }
 
@@ -242,12 +237,42 @@ body.admin-mode .question-card ul.options li:hover { background-color: rgba(var(
 .question-card ul.options li.correct-answer-admin { border: 2px solid var(--success-color); font-weight: bold; background-color: rgba(var(--success-color), 0.1); color: var(--text-color); }
 .correct-answer-guide { font-size: 0.85em; color: var(--info-color); margin-top: 15px; background-color: rgba(var(--info-color), 0.1); padding: 10px; border-radius: var(--border-radius-small); border: 1px solid rgba(var(--info-color), 0.3); }
 
-.saq textarea { width: 100%; min-height: 120px; padding: 15px; border: 1px solid var(--border-color); border-radius: var(--border-radius-medium); font-family: 'Noto Sans KR', sans-serif; font-size: 1em; margin-bottom: 15px; background-color: #353b4b; color: var(--text-color); resize: vertical; }
-.saq textarea::placeholder { color: var(--subtle-text-color); opacity: 0.7; }
-
-.toggle-answer-btn { background-color: var(--warning-color); color: var(--card-background); }
+.saq .user-answer-area {
+    margin-bottom: 15px;
+}
+.saq textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-medium);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 1em;
+    background-color: #353b4b;
+    color: var(--text-color);
+    resize: vertical;
+}
+.saq textarea:disabled {
+    background-color: #4a5168;
+    cursor: not-allowed;
+}
+.saq textarea::placeholder {
+    color: var(--subtle-text-color);
+    opacity: 0.7;
+}
+.toggle-answer-btn {
+    background-color: var(--warning-color);
+    color: var(--card-background);
+}
 .toggle-answer-btn:hover { background-color: #e6b000; }
-.answer { margin-top: 20px; padding: 20px; background-color: #353b4b; border-left: 5px solid var(--warning-color); border-radius: 0 var(--border-radius-medium) var(--border-radius-medium) 0; color: var(--subtle-text-color); }
+.answer {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: #353b4b;
+    border-left: 5px solid var(--warning-color);
+    border-radius: 0 var(--border-radius-medium) var(--border-radius-medium) 0;
+    color: var(--subtle-text-color);
+}
 .answer strong { color: var(--text-color); }
 
 .options li.user-correct { background-color: rgba(var(--success-color), 0.2); border-color: var(--success-color); color: var(--text-color); }
@@ -344,7 +369,7 @@ body.admin-mode .question-card ul.options li:hover { background-color: rgba(var(
     header h1 {
         font-size: 2.2em;
         margin-bottom: 15px;
-        padding: 0 10px; /* 양옆 패딩 추가 */
+        padding: 0 10px;
     }
     header #auth-btn {
         padding: 8px 15px;
