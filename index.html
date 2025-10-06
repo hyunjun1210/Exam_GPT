@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지필고사 내용 정리 사이트</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="add-content-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h2>어떤 콘텐츠를 추가할까요?</h2>
+            <button id="add-concept-choice">📝 개념 카드</button>
+            <button id="add-mcq-choice">❓ 객관식 문제</button>
+            <button id="add-saq-choice">✍️ 서술형 문제</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1 contenteditable="false">📚 시험 내용 정리</h1>
+            <button id="admin-login-btn">관리자 모드</button>
+        </header>
+
+        <nav class="tab-container">
+            <ul id="tab-list">
+                </ul>
+            <button id="add-tab-btn" class="admin-only">+ 새 과목 추가</button>
+        </nav>
+        <main>
+            <div id="content-stream">
+                <p class="no-content-message">과목을 선택하거나 새 과목을 추가해주세요.</p>
+            </div>
+
+            <div class="admin-controls">
+                <button id="add-content-btn" class="admin-only">+ 콘텐츠 추가</button>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="firebase-config.js"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
