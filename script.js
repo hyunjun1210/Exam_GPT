@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const card = e.target.closest('.card');
             const cardId = card.dataset.id;
             const field = e.target.dataset.editable;
-            const value = e.target.textContent;
+            const value = e.target.innerHTML;
             const cardRef = ref(db, `tabs/${currentTabId}/content/${cardId}`);
             const updates = {};
 
