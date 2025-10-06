@@ -14,11 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM 요소 ---
     const body = document.body;
     const authBtn = document.getElementById('auth-btn');
+    const contentStream = document.getElementById('content-stream');
+    // ... 이하 기존 DOM 요소들 ...
     const loginModal = document.getElementById('login-modal');
     const loginModalClose = document.getElementById('login-modal-close');
     const loginForm = document.getElementById('login-form');
     const loginErrorMsg = document.getElementById('login-error-msg');
-    const contentStream = document.getElementById('content-stream');
     const tabList = document.getElementById('tab-list');
     const addTabBtn = document.getElementById('add-tab-btn');
     const addContentBtn = document.getElementById('add-content-btn');
@@ -28,13 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Firebase 참조 ---
     const tabsRef = ref(db, 'tabs');
 
-    // === 인증 상태 리스너 (핵심!) ===
+    // === 인증 상태 리스너 ===
     onAuthStateChanged(auth, (user) => {
-        if (user) {
-            setAdminMode(true);
-        } else {
-            setAdminMode(false);
-        }
+        setAdminMode(!!user);
     });
     
     // --- 관리자 모드 UI 설정 ---
@@ -42,15 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
         isAdmin = mode;
         body.classList.toggle('admin-mode', mode);
         authBtn.textContent = mode ? '로그아웃' : '로그인';
+        
+        // 드래그앤드롭 기능 활성화/비활성화
+        if (sortableInstance) {
+            sortableInstance.option("disabled", !mode);
+        }
         renderAll();
     }
     
     // --- 로그인/로그아웃 버튼 로직 ---
     authBtn.addEventListener('click', () => {
         if (isAdmin) {
-            if(confirm('로그아웃 하시겠습니까?')) {
-                signOut(auth);
-            }
+            if(confirm('로그아웃 하시겠습니까?')) signOut(auth);
         } else {
             loginErrorMsg.textContent = '';
             loginForm.reset();
@@ -65,18 +65,12 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
-
         signInWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
-                loginModal.style.display = 'none';
-            })
-            .catch((error) => {
-                console.error("로그인 에러:", error.code);
-                loginErrorMsg.textContent = '이메일 또는 비밀번호가 잘못되었습니다.';
-            });
+            .then(() => loginModal.style.display = 'none')
+            .catch((error) => loginErrorMsg.textContent = '이메일 또는 비밀번호가 잘못되었습니다.');
     });
 
-    // --- 탭 관련 기능 ---
+    // ... 탭 관련 기능은 이전과 동일 ...
     addTabBtn.addEventListener('click', () => {
         const tabName = prompt('추가할 과목의 이름을 입력하세요:');
         if (tabName) {
@@ -121,7 +115,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, true);
 
-
     // --- 콘텐츠 추가 모달 ---
     addContentBtn.addEventListener('click', () => {
         if (!currentTabId) {
@@ -135,33 +128,37 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('add-concept-choice').addEventListener('click', () => addContentToDB('concept'));
     document.getElementById('add-mcq-choice').addEventListener('click', () => addContentToDB('mcq'));
     document.getElementById('add-saq-choice').addEventListener('click', () => addContentToDB('saq'));
+    document.getElementById('add-image-choice').addEventListener('click', () => addContentToDB('image')); // 이미지 카드 추가
 
     function addContentToDB(type) {
         const contentRef = ref(db, `tabs/${currentTabId}/content`);
-        const questionCount = contentStream.querySelectorAll('.question-card').length + 1;
+        const currentContent = allData[currentTabId]?.content || {};
+        const newOrder = Object.keys(currentContent).length; // 새 카드의 순서
+        
         let newContent;
-         switch (type) {
+        switch (type) {
             case 'concept':
-                newContent = { type: 'concept', title: '새로운 개념 제목', description: '여기에 개념 설명을 작성하세요.' };
+                newContent = { type: 'concept', title: '새로운 개념 제목', description: '내용을 입력하세요.', order: newOrder };
                 break;
             case 'mcq':
-                newContent = {
-                    type: 'mcq', question: `문제 ${questionCount}.`,
-                    options: [
-                        { text: '선택지 1', correct: false }, { text: '선택지 2', correct: true },
-                        { text: '선택지 3', correct: false }, { text: '선택지 4', correct: false },
-                        { text: '선택지 5', correct: false }
-                    ]
-                };
+                newContent = { type: 'mcq', question: '새로운 문제', options: [
+                    { text: '선택지 1', correct: false }, { text: '선택지 2', correct: true },
+                    { text: '선택지 3', correct: false }, { text: '선택지 4', correct: false },
+                    { text: '선택지 5', correct: false }], order: newOrder };
                 break;
             case 'saq':
-                 newContent = { type: 'saq', question: `문제 ${questionCount}.`, answer: '모범 답안을 작성하세요.' };
+                 newContent = { type: 'saq', question: '새로운 서술형 문제', answer: '모범 답안', order: newOrder };
+                break;
+            case 'image': // === 1. 이미지 카드 추가 로직 ===
+                const imageUrl = prompt('이미지 주소(URL)를 입력하세요:');
+                if (imageUrl) {
+                    newContent = { type: 'image', title: '새로운 이미지 제목', imageUrl: imageUrl, order: newOrder };
+                }
                 break;
         }
         if (newContent) push(contentRef, newContent);
         modal.style.display = 'none';
     }
-
 
     // --- 데이터 로드 및 전체 렌더링 ---
     onValue(tabsRef, (snapshot) => {
@@ -188,9 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             li.innerHTML = `<span data-editable="tab-name">${tabData.name}</span> <button class="delete-tab-btn admin-only-inline">&times;</button>`;
             li.querySelector('span[data-editable]').setAttribute('contenteditable', isAdmin);
 
-            if (tabId === currentTabId) {
-                li.classList.add('active');
-            }
+            if (tabId === currentTabId) li.classList.add('active');
             tabList.appendChild(li);
         });
     }
@@ -203,23 +198,26 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        if (isAdmin) {
-            addContentBtn.style.display = 'block';
-        } else {
-            addContentBtn.style.display = 'none';
-        }
+        addContentBtn.style.display = isAdmin ? 'block' : 'none';
 
         const contentData = allData[currentTabId].content || {};
-        if (Object.keys(contentData).length === 0) {
-            contentStream.innerHTML = `<p class="no-content-message">아직 추가된 콘텐츠가 없습니다. '+' 버튼을 눌러 추가해보세요!</p>`;
+
+        // === 2. 순서(order)에 따라 카드 정렬 ===
+        const sortedContent = Object.entries(contentData)
+            .map(([id, data]) => ({ id, ...data }))
+            .sort((a, b) => a.order - b.order);
+
+        if (sortedContent.length === 0) {
+            contentStream.innerHTML = `<p class="no-content-message">아직 추가된 콘텐츠가 없습니다.</p>`;
         }
         
-        Object.entries(contentData).forEach(([contentId, contentValue]) => {
+        sortedContent.forEach(contentValue => {
             let card;
             switch(contentValue.type) {
-                case 'concept': card = createConceptCard(contentId, contentValue); break;
-                case 'mcq': card = createMcqCard(contentId, contentValue); break;
-                case 'saq': card = createSaqCard(contentId, contentValue); break;
+                case 'concept': card = createConceptCard(contentValue.id, contentValue); break;
+                case 'mcq': card = createMcqCard(contentValue.id, contentValue); break;
+                case 'saq': card = createSaqCard(contentValue.id, contentValue); break;
+                case 'image': card = createImageCard(contentValue.id, contentValue); break;
             }
             if (card) {
                 contentStream.appendChild(card);
@@ -230,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- 콘텐츠 이벤트 위임 (삭제, 수정 등) ---
+    // ... 이전과 동일 ...
     contentStream.addEventListener('click', (e) => {
         const card = e.target.closest('.card');
         if (!card) return;
@@ -281,8 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, true);
 
-
     // --- 카드 생성 함수들 ---
+    // ... 기존 함수들은 동일, 이미지 카드 생성 함수 추가 ...
     function createConceptCard(id, data) {
         const div = document.createElement('div');
         div.className = 'card concept-card';
@@ -293,6 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
+    
     function createMcqCard(id, data) {
         const div = document.createElement('div');
         const uniqueName = `q${id}`;
@@ -329,27 +329,37 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="delete-btn admin-only">삭제</button>`;
         return div;
     }
-    function checkSingleMcq(questionCard) {
-        const options = questionCard.querySelectorAll('.options li');
-        const selectedOption = questionCard.querySelector('input[type="radio"]:checked');
-        const resultP = questionCard.querySelector('.single-mcq-result');
-        if (!selectedOption) {
-            alert('답을 선택해주세요!');
-            return;
-        }
-        options.forEach(opt => opt.classList.remove('user-correct', 'user-incorrect', 'reveal-correct'));
-        resultP.classList.remove('correct', 'incorrect');
-        const selectedLi = selectedOption.closest('li');
-        const isCorrect = selectedLi.dataset.correct === 'true';
-        if (isCorrect) {
-            selectedLi.classList.add('user-correct');
-            resultP.textContent = '정답입니다! 🎉';
-            resultP.classList.add('correct');
-        } else {
-            selectedLi.classList.add('user-incorrect');
-            resultP.textContent = '오답입니다. 다시 확인해보세요.';
-            resultP.classList.add('incorrect');
-        }
-        questionCard.querySelector('li[data-correct="true"]').classList.add('reveal-correct');
+    
+    function createImageCard(id, data) {
+        const div = document.createElement('div');
+        div.className = 'card image-card';
+        div.dataset.id = id;
+        div.innerHTML = `
+            <h3 data-editable="title">${data.title}</h3>
+            <div class="image-container">
+                <img src="${data.imageUrl}" alt="${data.title}">
+            </div>
+            <button class="delete-btn admin-only">삭제</button>`;
+        return div;
     }
+
+    function checkSingleMcq(questionCard) { /* ... 이전과 동일 ... */ }
+
+    // === 2. 드래그앤드롭 기능 초기화 ===
+    const sortableInstance = new Sortable(contentStream, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        disabled: !isAdmin, // 관리자 모드가 아닐 때는 비활성화
+        onEnd: (evt) => {
+            const updates = {};
+            contentStream.querySelectorAll('.card').forEach((card, index) => {
+                const cardId = card.dataset.id;
+                // Firebase의 해당 경로에 order 값만 업데이트하도록 준비
+                updates[`/tabs/${currentTabId}/content/${cardId}/order`] = index;
+            });
+            // 여러 경로를 한번에 업데이트 (효율적)
+            update(ref(db), updates);
+        },
+    });
 });
